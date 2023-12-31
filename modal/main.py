@@ -43,9 +43,15 @@ def download_models():
 sdxl_image = (
     Image.debian_slim()
     .apt_install(
-        "libglib2.0-0", "libsm6", "libxrender1", "libxext6", "ffmpeg", "libgl1"
+        "libglib2.0-0", "libsm6", "libxrender1", "libxext6", "ffmpeg", "libgl1", "curl" #, "software-properties-common"
     )
+    # .run_commands(["add-apt-repository ppa:jonathonf/rustlang -y"])
+    # .run_commands(["apt-get update"])
+    # .apt_install("rustc")
+    # .run_commands(["curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"])
+    # .run_commands(["source $HOME/.cargo/env"])
     .pip_install(
+        # "tokenizers==0.12.1",
         "diffusers~=0.19",
         "invisible_watermark~=0.1",
         "transformers~=4.31",
@@ -54,6 +60,9 @@ sdxl_image = (
     )
     .run_function(download_models)
     .pip_install("requests~=2.26")
+    # now run this command
+    # transformers.utils.move_cache() to move cache
+    .run_commands(["echo 'import transformers; transformers.utils.move_cache()' | python3"])
 )
 
 stub = Stub("stable-diffusion-xl")
@@ -68,12 +77,12 @@ stub = Stub("stable-diffusion-xl")
 
 # vol = Volume.persisted("generated-images")
 
-@stub.cls(gpu=gpu.A10G(), container_idle_timeout=2, image=sdxl_image) #, checkpointing_enabled=True)
+@stub.cls(gpu=gpu.A10G(), container_idle_timeout=2, image=sdxl_image, checkpointing_enabled=True)
 class Model:
     def __enter__(self):
         import torch
         from diffusers import DiffusionPipeline
-
+        print("running enter")
         load_options = dict(
             torch_dtype=torch.float16,
             use_safetensors=True,
@@ -93,6 +102,7 @@ class Model:
             vae=self.base.vae,
             **load_options,
         )
+        print('ran enter')
 
         # Compiling the model graph is JIT so this will increase inference time for the first run
         # but speed up subsequent runs. Uncomment to enable.
@@ -101,18 +111,19 @@ class Model:
 
     @method()
     def inference(self, prompt, task_id, upload_url, progress_url, n_steps=48, high_noise_frac=0.9):
+        print('starting inference')
         # negative_prompt = "disfigured, ugly, deformed"
         image = self.base(
             prompt=prompt,
             # negative_prompt=negative_prompt,
             num_inference_steps=n_steps,
-            denoising_end=.9,
+            denoising_end=high_noise_frac,
             output_type="latent",
         ).images
         image = self.refiner(
             prompt=prompt,
             # negative_prompt=negative_prompt,
-            num_inference_steps=2,
+            num_inference_steps=n_steps,
             denoising_start=high_noise_frac,
             image=image,
         ).images
@@ -196,7 +207,7 @@ def app():
         upload_url = body["upload_url"]
         progress_url = body["progress_url"]
         from fastapi.responses import Response
-        print("prompt", prompt, "task_id", task_id, "upload_url", upload_url, "progress_url", progress_url)
+
         if request.headers["authorization"] != "OIMWEFOIJWEOIHFEFHNMFIJFHUFUHFHFHUEFFUHF":
             return Response("Unauthorized", status_code=401)
 

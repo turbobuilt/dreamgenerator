@@ -1,0 +1,1 @@
+modal deploy --name sdxl2 main2.py
