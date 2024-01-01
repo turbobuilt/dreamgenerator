@@ -76,7 +76,7 @@ with stub.image.imports():
 
     load_options = dict(
         torch_dtype=torch.float16,
-        use_safetensors=True,
+        # use_safetensors=True,
         variant="fp16",
         # device_map=torch.device("cpu"),
         local_files_only=True
@@ -84,6 +84,11 @@ with stub.image.imports():
 
     # Load base model
     base = DiffusionPipeline.from_pretrained("/data/base", **load_options)
+
+
+@stub.function(checkpointing_enabled=True, gpu=gpu.A10G(), container_idle_timeout=2, image=sdxl_image)
+def inference(prompt, task_id, upload_url, progress_url, n_steps=48, high_noise_frac=0.9):
+    print('starting inference')
     # print(base.hf_device_map)
     refiner = DiffusionPipeline.from_pretrained(
         "/data/refiner",
@@ -92,11 +97,6 @@ with stub.image.imports():
         **load_options,
     )
     print('ran enter')
-
-
-@stub.function(checkpointing_enabled=False, gpu=gpu.A10G(), container_idle_timeout=2, image=sdxl_image)
-def inference(prompt, task_id, upload_url, progress_url, n_steps=48, high_noise_frac=0.9):
-    print('starting inference')
     
     # move to cuda
     image = base.to("cuda")(
@@ -161,7 +161,7 @@ def app():
         progress_url = body["progress_url"]
         from fastapi.responses import Response
 
-        if request.headers["authorization"] != "OIMWEFOIJWEOIHFEFHNMFIJFHUFUHFHFHUEFFUHF":
+        if request.headers["authorization"] != "mfnb3uhgFDDFdhjdfhfgjhgGJYOUGF32rCGFGVbhdfbJBHcDYDHFDHFHFLJKJH":
             return Response("Unauthorized", status_code=401)
         print('calling inference')
         image_bytes = inference.remote(prompt, task_id, upload_url, progress_url)
